@@ -175,7 +175,7 @@ remotes::install_github('satijalab/azimuth')
 
 4. **Update data paths** if needed
     - Paths to external 10X data directories
-    - Update `file_dir` in
+    - Update `file_dir` in markdown
 
 5. **Run analysis**
     - Execute chunks sequentially or knit the entire document
