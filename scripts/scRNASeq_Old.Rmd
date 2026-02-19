@@ -1,0 +1,959 @@
+---
+title: "scRNASeq"
+author: "J. O'Connor"
+date: "2025-06-12"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+library(SeuratObject)
+library(Seurat)
+library(SeuratDisk)
+library(ggplot2)
+library(patchwork)
+library(R.utils)
+library(SeuratObject)
+library(tidyr)
+library(dplyr)
+library(harmony)
+
+```
+
+## Import
+
+```{r cars}
+#Below the different 10X files are loaded and transformed into Seurat Objects
+
+#Radiation/Trametinib (radiation resistant cells loaded into mice that were treated with trametinib)
+data.927 <- Read10X(data.dir = "/Volumes/Untitled/927_filtered_feature_bc_matrix")
+data.929 <- Read10X(data.dir = "/Volumes/Untitled/929_filtered_feature_bc_matrix")
+data.934 <- Read10X(data.dir = "/Volumes/Untitled/934_filtered_feature_bc_matrix")
+
+s927 <- CreateSeuratObject(counts = data.927) 
+s929 <- CreateSeuratObject(counts = data.929) 
+s934 <- CreateSeuratObject(counts = data.934)
+
+
+#Radiation/Vehicle (radiation resistant cells loaded into mice that were treated with vehicle)
+data.932 <- Read10X(data.dir = "/Volumes/Untitled/932_filtered_feature_bc_matrix")
+
+s932 <- CreateSeuratObject(counts = data.932) 
+
+
+#No Radation/Trametinib (wild type cells loaded into mice that were treated with trametinib)
+data.943 <- Read10X(data.dir = "/Volumes/Untitled/943_filtered_feature_bc_matrix")
+data.946 <- Read10X(data.dir = "/Volumes/Untitled/946_filtered_feature_bc_matrix")
+data.948 <- Read10X(data.dir = "/Volumes/Untitled/948_filtered_feature_bc_matrix")
+data.949 <- Read10X(data.dir = "/Volumes/Untitled/949_filtered_feature_bc_matrix")
+data.951 <- Read10X(data.dir = "/Volumes/Untitled/951_filtered_feature_bc_matrix")
+
+s943 <- CreateSeuratObject(counts = data.943) 
+s946 <- CreateSeuratObject(counts = data.946)
+s948 <- CreateSeuratObject(counts = data.948)
+s949 <- CreateSeuratObject(counts = data.949)
+s951 <- CreateSeuratObject(counts = data.951)
+
+
+#No Radiation/Vehicle (wild type cells loaded into mice that were treated with vehicle)
+data.940 <- Read10X(data.dir = "/Volumes/Untitled/940_filtered_feature_bc_matrix")
+data.941 <- Read10X(data.dir = "/Volumes/Untitled/941_filtered_feature_bc_matrix")
+data.942 <- Read10X(data.dir = "/Volumes/Untitled/942_filtered_feature_bc_matrix")
+data.945 <- Read10X(data.dir = "/Volumes/Untitled/945_filtered_feature_bc_matrix")
+data.947 <- Read10X(data.dir = "/Volumes/Untitled/947_filtered_feature_bc_matrix")
+data.950 <- Read10X(data.dir = "/Volumes/Untitled/950_filtered_feature_bc_matrix")
+data.952 <- Read10X(data.dir = "/Volumes/Untitled/952_filtered_feature_bc_matrix")
+ 
+s940 <- CreateSeuratObject(counts = data.940) 
+s941 <- CreateSeuratObject(counts = data.941)
+s942 <- CreateSeuratObject(counts = data.942)
+s945 <- CreateSeuratObject(counts = data.945)
+s947 <- CreateSeuratObject(counts = data.947)
+s950 <- CreateSeuratObject(counts = data.950)
+s952 <- CreateSeuratObject(counts = data.952)
+
+#all.data <- Read10X(data.dir="/Users/johnoconnor/GreenLabRotation/10XBackup")
+#Individual experiments are merged into one seurat object 
+all.data <- merge(s927, y=c(s929, s934, s932, s943, s946, s948, s949, s951, s940, s941, s942, s945, s947, s950, s952), add.cell.ids=c("927", "929", "934", "932", "943", "946", "948", "949", "951", "940", "941", "942", "945", "947", "950", "952"), project="PHGG")
+
+
+```
+
+## Processing
+
+You can also embed plots, for example:
+
+```{r pressure, echo=FALSE}
+# The [[ operator can add columns to object metadata. This is a great place to stash QC stats
+all.data[["percent.mt"]] <- PercentageFeatureSet(all.data, pattern = "^MT-")
+
+# Visualize QC metrics as a violin plot
+VlnPlot(all.data, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3)
+
+selected <- WhichCells(all.data, expression = percent.mt < 25 & nFeature_RNA > 200 & nFeature_RNA < 7500)
+all.data.filt <- subset(all.data, cells = selected)
+
+
+#Meta data added!
+rad_ids <- c("927","929","934","932")
+norad_ids <- c("943","946","948","949","951","940","941","942","945","947","950", "952")
+trt_ids <- c("927","929","934", "943","946","948","949","951")
+no_trt_ids <- c("932","940","941","942","945","947","950","952")
+
+all.data.filt@meta.data$Radiation <- ""
+all.data.filt@meta.data$Treatment <- ""
+all.data.filt@meta.data$Runs <- ""
+
+for (r in 1:nrow(all.data.filt@meta.data)) {
+  sub_r <- substr(rownames(all.data.filt@meta.data)[r],1,3) 
+  all.data.filt@meta.data$Runs[r] <- sub_r
+  if (sub_r %in% rad_ids) {
+    all.data.filt@meta.data$Radiation[r] <- "Radiation" 
+  } else {
+    if (sub_r %in% norad_ids) {
+      all.data.filt@meta.data$Radiation[r] <- "No Radiation"
+    } 
+  }
+
+  if (sub_r %in% trt_ids) {
+    all.data.filt@meta.data$Treatment[r] <- "Trametinib" 
+  } else {
+    if (sub_r %in% no_trt_ids) {
+      all.data.filt@meta.data$Treatment[r] <- "Vehicle"
+    } 
+  }
+}
+
+
+all.data.filt <- NormalizeData(all.data.filt) %>% FindVariableFeatures() %>% ScaleData() %>% RunPCA(verbose = FALSE)
+
+all.data.filt <- RunHarmony(all.data.filt, group.by.vars = "Runs")
+
+
+
+ElbowPlot(all.data.filt)
+
+all.data.filt <- RunUMAP(all.data.filt, dims = 1:20)
+
+DimPlot(all.data.filt, reduction = "pca")
+
+s.genes <- cc.genes$s.genes
+g2m.genes <- cc.genes$g2m.genes
+
+all.data.filt <- JoinLayers(all.data.filt)
+
+all.data.filt <- CellCycleScoring(all.data.filt, s.features = s.genes, g2m.features = g2m.genes, set.ident = TRUE)
+
+all.data.filt <- ScaleData(all.data.filt, vars.to.regress = c("S.Score", "G2M.Score"), features = rownames(all.data.filt))
+
+all.data.filt <- RunPCA(all.data.filt, verbose = FALSE)
+
+all.data.filt <- RunUMAP(all.data.filt, dims = 1:20)
+
+all.data.filt <- FindNeighbors(all.data.filt, reduction = "pca", dims = 1:20) %>% FindClusters(resolution=0.6)
+
+DimPlot(all.data.filt, group.by = "Runs")
+
+
+
+
+
+
+
+DimPlot(all.data.filt, group.by = "Treatment")
+DimPlot(all.data.filt, group.by = "Radiation")
+DimPlot(all.data.filt, group.by = "seurat_clusters")
+
+DotPlot(all.data.filt, 
+        assay="RNA", 
+        features=c("PSME2", 
+                   "MAFB", 
+                   "NKTR", 
+                   "CD46", 
+                   "VIM", 
+                   "IGFBP2", 
+                   "PTPRZ1", 
+                   "OLIG2", 
+                   "OLIG1", 
+                   "ENC1", 
+                   "ARC", 
+                   "GAP43", 
+                   "CHI3L1", 
+                   "APOE", 
+                   "GFAP", 
+                   "PCLAF",
+                   "TYMS",
+                   "HIST1H1B",
+                   "RPS29",
+                   "MT-ND3"
+                   ), 
+        cols="RdBu",
+        col.min=-2,
+        col.max=2,
+        group.by="seurat_clusters") +
+            coord_flip() +
+  geom_point(aes(size=pct.exp), shape = 21, colour="black", stroke=0.5)+
+    labs(x="Gene", y="Cluster",
+         title="Original Genes") 
+
+
+
+# find markers for every cluster compared to all remaining cells, report only the positive
+# ones
+all.data.filt.markers <- FindAllMarkers(all.data.filt, only.pos = TRUE)
+all.data.filt.markers_most <- all.data.filt.markers %>%
+    group_by(cluster) %>%
+    dplyr::filter(avg_log2FC > 2)
+
+all.data.filt.markers_sig <- all.data.filt.markers %>%
+    group_by(cluster) %>%
+    dplyr::filter(p_val_adj > 0.05)
+
+write.csv(all.data.filt.markers, "data/clustermarkers.csv")
+
+#Meta-analysis Objects
+  #all_clin: metadata file with subject information including cardimetabolic markers
+  #mic_all_16S; clr transformed genus level data
+  #
+  seurat_objects <- list(all.data.filt.markers=all.data.filt.markers,
+                       all.data.filt=all.data.filt)
+  saveRDS(seurat_objects, file = "data/R_Data_Objects/Saved_objects.RDS")
+
+
+
+
+```
+
+
+#Differential Expression
+```{r}
+
+trm_res_clusters <- c(2, 7, 10, 11)
+trm_sen_clusters <- c(0, 1, 3, 4, 5, 6, 9)
+
+only_rad_res_clusters <- c(2, 10)
+rad_trm_res_clusters <- c(7, 11)
+
+
+all.data.filt@meta.data$Radiation_Resistance <- "Other"
+all.data.filt@meta.data$Radiation_Trametenib_Resistance <- "Other"
+
+for (r in 1:nrow(all.data.filt@meta.data)) {
+  clus_r <- all.data.filt@meta.data$seurat_clusters[r]
+  
+  if (clus_r %in% trm_res_clusters) {
+    all.data.filt@meta.data$Radiation_Resistance[r] <- "Radiation Resistant"
+  } 
+  if (clus_r %in% trm_sen_clusters) {
+    all.data.filt@meta.data$Radiation_Resistance[r] <- "Radiation Sensitive"
+  }
+
+  if (clus_r %in% only_rad_res_clusters) {
+    all.data.filt@meta.data$Radiation_Trametenib_Resistance[r] <- "Only Radiation Resistant"
+  } 
+  if (clus_r %in% rad_trm_res_clusters) {
+    all.data.filt@meta.data$Radiation_Trametenib_Resistance[r] <- "Radiation and Trametenib Resistant"
+  }
+
+}
+
+DimPlot(all.data.filt, group.by = "Radiation_Resistance")
+DimPlot(all.data.filt, group.by = "Radiation_Trametenib_Resistance")
+
+
+rad.sub <- subset(
+  all.data.filt,
+  subset = Radiation_Resistance %in% c("Radiation Resistant", "Radiation Sensitive")
+)
+
+Idents(rad.sub) <- "Radiation_Resistance"
+rad_DE <- FindMarkers(
+  rad.sub,
+  ident.1 = "Radiation Resistant",
+  ident.2 = "Radiation Sensitive",
+)
+
+rad_DE$logpadj <- -1*(log10(rad_DE$p_val_adj))
+
+rad_DE$Sig <- "Insignificant"
+
+rad_DE$Label <- ""
+
+
+for (i in 1:nrow(rad_DE)) {
+  if (rad_DE$avg_log2FC[i]>0 & rad_DE$p_val_adj[i]<0.05) {
+    rad_DE$Sig[i] <- "Increased with Sensitivity"
+    rad_DE$Label[i] <- rownames(rad_DE)[i]
+  } 
+  if (rad_DE$avg_log2FC[i]<0 & rad_DE$p_val_adj[i]<0.05) {
+    rad_DE$Sig[i] <- "Increased with Resistance"
+    rad_DE$Label[i] <- rownames(rad_DE)[i]
+  } 
+}
+
+library(ggrepel)
+Rad_Volc_plot <- ggplot(data=rad_DE, aes(x=avg_log2FC,y=logpadj, color=Sig))+
+                      geom_point(size=3)+
+                      geom_text_repel(data=rad_DE, aes(x=avg_log2FC,y=logpadj, label=Label))+
+                      scale_color_manual(values=c("blue","red","gray"))+
+                      labs(x="LFC",y="-log10(padj)", color=" ")+
+                      theme_classic() +
+                      theme(legend.position = "bottom",
+                            legend.title = element_text(size = 15),
+                            legend.text = element_text(size = 15),
+                            axis.text.x = element_text(size = 15),
+                            axis.title.y = element_text(size = 15),
+                            axis.title.x = element_text(size=15),
+                            axis.text.y = element_text(size = 15),
+                            strip.text.x = element_text(size=15),
+                            strip.text.y = element_text(size=15),
+                            plot.tag = element_text(size=20))
+
+
+
+
+library(dplyr)
+rad_DE$gene <- rownames(rad_DE)
+
+rad_gene_list <- rad_DE %>%
+  dplyr::select(gene, avg_log2FC) %>%
+  distinct() %>%
+  arrange(desc(avg_log2FC))
+
+
+# Named vector
+rad_gene_ranks <- rad_gene_list$avg_log2FC
+names(rad_gene_ranks) <- rad_gene_list$gene
+
+# Optional but recommended
+rad_gene_ranks <- sort(rad_gene_ranks, decreasing = TRUE)
+
+
+library(clusterProfiler)
+library(org.Hs.eg.db)
+
+rad_gsea_go <- gseGO(
+  geneList     = rad_gene_ranks,
+  OrgDb        = org.Hs.eg.db,
+  keyType      = "SYMBOL",
+  ont          = "ALL",
+  minGSSize    = 10,
+  maxGSSize    = 500,
+  pvalueCutoff = 0.05,
+  verbose      = FALSE
+)
+
+# Get Hallmark gene sets
+hallmark <- msigdbr(
+  species = "Homo sapiens",
+  category = "H"
+)
+
+# Create TERM2GENE data frame
+hallmark_t2g <- hallmark %>%
+  dplyr::select(gs_name, gene_symbol)
+
+# Run GSEA
+rad_gsea_cancer <- GSEA(
+  geneList     = rad_gene_ranks,
+  TERM2GENE    = hallmark_t2g,
+  pvalueCutoff = 0.05,
+  verbose      = FALSE
+)
+
+
+
+rad_gsea_res <- rad_gsea_cancer@result[which(rad_gsea_cancer@result$p.adjust<0.05),]
+
+# Top 10 positively enriched (highest NES)
+rad_top_enriched <- rad_gsea_res %>%
+  arrange(desc(NES)) 
+
+# Top 10 negatively enriched (most depleted)
+rad_bottom_enriched <- rad_gsea_res %>%
+  arrange(NES) 
+
+
+rad_top_bottom <- bind_rows(
+  rad_top_enriched %>% mutate(Direction = "Upregulated"),
+  rad_bottom_enriched %>% mutate(Direction = "Downregulated")
+)
+
+rad_dotplot<- ggplot(data=rad_top_bottom, aes(x=NES, y=reorder(Description,NES), size=setSize,color=p.adjust))+
+              geom_point()+
+      labs(y="Gene Sets Enriched or Depleted", color="Adjusted P-value", size="Size")+
+  theme_classic() +
+  theme(legend.position = "bottom",
+        legend.title = element_text(size = 10),
+        legend.text = element_text(size = 10),
+        axis.text.x = element_text(size = 10),
+        axis.title.y = element_text(size = 10),
+        axis.title.x = element_text(size=10),
+        axis.text.y = element_text(size = 10),
+        strip.text.x = element_text(size=10),
+        strip.text.y = element_text(size=10),
+        plot.tag = element_text(size=25),
+        ggh4x.facet.nestline = element_blank())
+
+
+rad.trt.sub <- subset(
+  all.data.filt,
+  subset = Radiation_Trametenib_Resistance %in% c("Only Radiation Resistant", "Radiation and Trametenib Resistant")
+)
+
+Idents(rad.trt.sub) <- "Radiation_Trametenib_Resistance"
+rad_trt_DE <- FindMarkers(
+  rad.trt.sub,
+  ident.1 = "Only Radiation Resistant",
+  ident.2 = "Radiation and Trametenib Resistant"
+)
+
+
+rad_trt_DE$logpadj <- -1*(log10(rad_trt_DE$p_val_adj))
+
+rad_trt_DE$Sig <- "Insignificant"
+
+rad_trt_DE$Label <- ""
+
+
+for (i in 1:nrow(rad_trt_DE)) {
+  if (rad_trt_DE$avg_log2FC[i]<0 & rad_trt_DE$p_val_adj[i]<0.05) {
+    rad_trt_DE$Sig[i] <- "Decreased in Additional Trametinib Resistance"
+    rad_trt_DE$Label[i] <- rownames(rad_trt_DE)[i]
+  } 
+  if (rad_trt_DE$avg_log2FC[i]>0 & rad_trt_DE$p_val_adj[i]<0.05) {
+    rad_trt_DE$Sig[i] <- "Increased in Additional Trametinib Resistance"
+    rad_trt_DE$Label[i] <- rownames(rad_trt_DE)[i]
+  } 
+}
+
+library(ggrepel)
+Rad_Trt_Volc_plot <- ggplot(data=rad_trt_DE, aes(x=avg_log2FC,y=logpadj, color=Sig))+
+                      geom_point(size=3)+
+                      geom_text_repel(data=rad_trt_DE, aes(x=avg_log2FC,y=logpadj, label=Label))+
+                      scale_color_manual(values=c("blue","red","gray"))+
+                      labs(x="LFC",y="-log10(padj)", color=" ")+
+                      theme_classic() +
+                      theme(legend.position = "bottom",
+                            legend.title = element_text(size = 15),
+                            legend.text = element_text(size = 15),
+                            axis.text.x = element_text(size = 15),
+                            axis.title.y = element_text(size = 15),
+                            axis.title.x = element_text(size=15),
+                            axis.text.y = element_text(size = 15),
+                            strip.text.x = element_text(size=15),
+                            strip.text.y = element_text(size=15),
+                            plot.tag = element_text(size=20))
+
+
+rad_trt_DE$gene <- rownames(rad_trt_DE)
+
+rad_trt_gene_list <- rad_trt_DE %>%
+  dplyr::select(gene, avg_log2FC) %>%
+  distinct() %>%
+  arrange(desc(avg_log2FC))
+# Named vector
+rad_trt_gene_ranks <- rad_trt_gene_list$avg_log2FC
+names(rad_trt_gene_ranks) <- rad_trt_gene_list$gene
+
+# Optional but recommended
+rad_trt_gene_ranks <- sort(rad_trt_gene_ranks, decreasing = TRUE)
+
+
+library(clusterProfiler)
+library(org.Hs.eg.db)
+
+rad_trt_gsea_go <- gseGO(
+  geneList     = rad_trt_gene_ranks,
+  OrgDb        = org.Hs.eg.db,
+  keyType      = "SYMBOL",
+  ont          = "ALL",
+  minGSSize    = 10,
+  maxGSSize    = 500,
+  pvalueCutoff = 0.05,
+  verbose      = FALSE
+)
+
+
+# Run GSEA
+rad_trt_gsea_cancer <- GSEA(
+  geneList     = rad_trt_gene_ranks,
+  TERM2GENE    = hallmark_t2g,
+  pvalueCutoff = 0.05,
+  verbose      = FALSE
+)
+
+
+rad_trt_gsea_res <- rad_trt_gsea_cancer@result[which(rad_trt_gsea_cancer@result$p.adjust<0.05),]
+
+# Top 10 positively enriched (highest NES)
+rad_trt_top_enriched <- rad_trt_gsea_res %>%
+  arrange(desc(NES)) %>%
+  slice_head(n = 10)
+
+# Top 10 negatively enriched (most depleted)
+rad_trt_bottom_enriched <- rad_trt_gsea_res %>%
+  arrange(NES) %>%
+  slice_head(n = 10)
+
+
+rad_trt_top_bottom <- bind_rows(
+  rad_trt_top_enriched %>% mutate(Direction = "Upregulated"),
+  rad_trt_bottom_enriched %>% mutate(Direction = "Downregulated")
+)
+
+rad_trt_dotplot<- ggplot(data=rad_trt_top_bottom, aes(x=NES, y=reorder(Description,NES), size=setSize,color=p.adjust))+
+  geom_point()+
+  labs(y="Gene Sets Enriched or Depleted", color="Adjusted P-value", size="Size")+
+  theme_classic() +
+  theme(legend.position = "bottom",
+        legend.title = element_text(size = 10),
+        legend.text = element_text(size = 10),
+        axis.text.x = element_text(size = 10),
+        axis.title.y = element_text(size = 10),
+        axis.title.x = element_text(size=10),
+        axis.text.y = element_text(size = 10),
+        strip.text.x = element_text(size=10),
+        strip.text.y = element_text(size=10),
+        plot.tag = element_text(size=25),
+        ggh4x.facet.nestline = element_blank())
+
+
+```
+
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+
+```{r}
+
+FC_data <- as.data.frame(c(0,1,2,3,4,5,6,7,8,9,10,11))
+
+colnames(FC_data) <- "cluster"
+
+FC_data$log2FCRad <- NA
+FC_data$log2FCtrt <- NA
+seurat_meta <- all.data.filt@meta.data
+tab_rad <- as.data.frame(table(seurat_meta$Radiation, seurat_meta$seurat_clusters))
+tab_trt <- as.data.frame(table(seurat_meta$Treatment, seurat_meta$seurat_clusters))
+
+
+for (r in 1:nrow(FC_data)) {
+  clus_r <- FC_data$cluster[r]
+  
+  FC_data$log2FCRad[r] <- log2(tab_rad$Freq[which(tab_rad$Var2==clus_r & tab_rad$Var1=="Radiation")]/tab_rad$Freq[which(tab_rad$Var2==clus_r & tab_rad$Var1=="No Radiation")])
+  
+  
+  FC_data$log2FCtrt[r] <- log2(tab_trt$Freq[which(tab_trt$Var2==clus_r & tab_trt$Var1=="Trametinib")]/tab_trt$Freq[which(tab_trt$Var2==clus_r & tab_trt$Var1=="Vehicle")])
+  
+  
+  
+}
+
+
+#plot 
+
+Fc_plot <- ggplot(data=FC_data, aes(x=log2FCRad,y=log2FCtrt, color=as.factor(cluster)))+
+                      geom_point(size=3)+
+                    #  geom_text_repel(data=fecal.hiv.volc.data, aes(x=`lfc_HIVHIV-Negative`,y=Log10padj, label=PlotLabel))+
+                    #  scale_color_manual(values=c("blue","red","gray"))+
+                      geom_text_repel(data=FC_data, aes(x=log2FCRad,y=log2FCtrt, label=cluster), size=4)+
+                      labs(x="Log2(FC Radiation)",y="Log2(FC Drug)", color="cluster")+
+                      theme_classic() +
+                      theme(legend.position = "right",
+                            legend.title = element_text(size = 15),
+                            legend.text = element_text(size = 15),
+                            axis.text.x = element_text(size = 15),
+                            axis.title.y = element_text(size = 15),
+                            axis.title.x = element_text(size=15),
+                            axis.text.y = element_text(size = 15),
+                            strip.text.x = element_text(size=15),
+                            strip.text.y = element_text(size=15),
+                            plot.tag = element_text(size=20))
+
+
+lowest_p_genes <- all.data.filt.markers %>%
+  group_by(cluster) %>%
+  slice_min(order_by = p_val, n = 2, with_ties = TRUE)
+
+lowest_p_genes$absFC <- -1*abs(lowest_p_genes$avg_log2FC)
+
+
+lowest_p_genes_filt <- lowest_p_genes %>%
+  group_by(cluster) %>%
+  slice_min(order_by = absFC, n = 2, with_ties = TRUE)
+
+
+DotPlot(all.data.filt, 
+        assay="RNA", 
+        features=lowest_p_genes_filt$gene, 
+        cols="RdBu",
+        col.min=-2,
+        col.max=2,
+        group.by="seurat_clusters") +
+            coord_flip() +
+  geom_point(aes(size=pct.exp), shape = 21, colour="black", stroke=0.5)+
+    labs(x="Gene", y="Cluster",
+         title="Differentially Expressed Genes") 
+
+```
+
+
+##Annotation
+```{r}
+
+
+# load libraries and functions
+lapply(c("dplyr","Seurat","HGNChelper","openxlsx"), library, character.only = T)
+source("https://raw.githubusercontent.com/IanevskiAleksandr/sc-type/master/R/gene_sets_prepare.R"); source("https://raw.githubusercontent.com/IanevskiAleksandr/sc-type/master/R/sctype_score_.R")
+
+
+# get cell-type-specific gene sets from our in-built database (DB)
+gs_list <- gene_sets_prepare("https://raw.githubusercontent.com/IanevskiAleksandr/sc-type/master/ScTypeDB_short.xlsx", "Immune system") # e.g. Immune system, Liver, Pancreas, Kidney, Eye, Brain
+
+# load example (scaled/normalized) scRNA-seq matrix
+scRNAseqData <- readRDS(gzcon(url('https://raw.githubusercontent.com/IanevskiAleksandr/sc-type/master/exampleData.RDS')));
+
+# assign cell types
+es.max <- sctype_score(scRNAseqData = scRNAseqData, scaled = TRUE, gs = gs_list$gs_positive, gs2 = gs_list$gs_negative)
+
+# View results, cell-type by cell matrix. See the complete example below
+View(es.max)
+
+# load gene set preparation function
+source("https://raw.githubusercontent.com/IanevskiAleksandr/sc-type/master/R/gene_sets_prepare.R")
+# load cell type annotation function
+source("https://raw.githubusercontent.com/IanevskiAleksandr/sc-type/master/R/sctype_score_.R")
+
+
+# DB file
+db_ <- "https://raw.githubusercontent.com/IanevskiAleksandr/sc-type/master/ScTypeDB_full.xlsx";
+tissue <- "Brain" # e.g. Immune system,Pancreas,Liver,Eye,Kidney,Brain,Lung,Adrenal,Heart,Intestine,Muscle,Placenta,Spleen,Stomach,Thymus 
+
+# prepare gene sets
+gs_list <- gene_sets_prepare(db_, tissue)
+
+
+scRNAseqData_scaled <- all.data.filt[["RNA"]]$scale.data
+
+
+# run ScType
+es.max <- sctype_score(scRNAseqData = scRNAseqData_scaled, scaled = TRUE, gs = gs_list$gs_positive, gs2 = gs_list$gs_negative)
+
+# NOTE: scRNAseqData parameter should correspond to your input scRNA-seq matrix. For raw (unscaled) count matrix set scaled = FALSE
+# When using Seurat, we use "RNA" slot with 'scale.data' by default. Please change "RNA" to "SCT" for sctransform-normalized data,
+# or to "integrated" for joint dataset analysis. To apply sctype with unscaled data, use e.g. pbmc[["RNA"]]$counts or pbmc[["RNA"]]@counts, with scaled set to FALSE.
+
+# merge by cluster
+cL_resutls <- do.call("rbind", lapply(unique(all.data.filt@meta.data$seurat_clusters), function(cl){
+    es.max.cl = sort(rowSums(es.max[ ,rownames(all.data.filt@meta.data[all.data.filt@meta.data$seurat_clusters==cl, ])]), decreasing = !0)
+    head(data.frame(cluster = cl, type = names(es.max.cl), scores = es.max.cl, ncells = sum(all.data.filt@meta.data$seurat_clusters==cl)), 10)
+}))
+sctype_scores <- cL_resutls %>% group_by(cluster) %>% top_n(n = 1, wt = scores)  
+
+# set low-confident (low ScType score) clusters to "unknown"
+sctype_scores$type[as.numeric(as.character(sctype_scores$scores)) < sctype_scores$ncells/100] <- "Unknown"
+print(sctype_scores[,1:3])
+
+
+FC_data$sctype_classification = ""
+for(j in unique(FC_data$cluster)){
+  cl_type = sctype_scores[sctype_scores$cluster==j,]; 
+  FC_data$sctype_classification[sctype_scores$cluster == j] = as.character(cl_type$type[1])
+}
+
+
+Fc_plot_ann <- ggplot(data=FC_data, aes(x=log2FCRad,y=log2FCtrt, color=as.factor(cluster)))+
+                      geom_point(size=3)+
+                    #  geom_text_repel(data=fecal.hiv.volc.data, aes(x=`lfc_HIVHIV-Negative`,y=Log10padj, label=PlotLabel))+
+                    #  scale_color_manual(values=c("blue","red","gray"))+
+                      geom_text_repel(data=FC_data, aes(x=log2FCRad,y=log2FCtrt, label=sctype_classification), size=4)+
+                      labs(x="Log2(FC Radiation)",y="Log2(FC Drug)", color="cluster")+
+                      theme_classic() +
+                      theme(legend.position = "right",
+                            legend.title = element_text(size = 15),
+                            legend.text = element_text(size = 15),
+                            axis.text.x = element_text(size = 15),
+                            axis.title.y = element_text(size = 15),
+                            axis.title.x = element_text(size=15),
+                            axis.text.y = element_text(size = 15),
+                            strip.text.x = element_text(size=15),
+                            strip.text.y = element_text(size=15),
+                            plot.tag = element_text(size=20))
+
+
+#ADORA3, ADRB2, BHLHE41, BIN1, CCL4, KLF2, NAV3, P2RY12, RHOB, SALL1, SIGLEC8, SLC1A3, SPRY1, TAL1
+
+
+DotPlot(all.data.filt, 
+        assay="RNA", 
+        features=c("ADORA3", 
+                   "ADRB2", 
+                   "BHLHE41", 
+                   "BIN1", 
+                   "CCL4",
+                   "KLF2", 
+                   "NAV3", 
+                   "P2RY12", 
+                   "RHOB", 
+                   "SALL1", 
+                   "SIGLEC8", 
+                   "SLC1A3", 
+                   "SPRY1", 
+                   "TAL1"
+                   ), 
+        cols="RdBu",
+        col.min=-2,
+        col.max=2,
+        group.by="seurat_clusters") +
+            coord_flip() +
+  geom_point(aes(size=pct.exp), shape = 21, colour="black", stroke=0.5)+
+    labs(x="Gene", y="Cluster",
+         title="Microglial Cell Glioma Genes") 
+
+#ASCL1, BOC, CCND2, CD24, CHD7, EGFR, NFIB, SOX11, SOX2, SOX4, TCF4
+
+DotPlot(all.data.filt, 
+        assay="RNA", 
+        features=c("ASCL1", 
+                   "BOC", 
+                   "CCND2", 
+                   "CD24", 
+                   "CHD7", 
+                   "EGFR", 
+                   "NFIB", 
+                   "SOX11", 
+                   "SOX2", 
+                   "SOX4", 
+                   "TCF4"
+                   ), 
+        cols="RdBu",
+        col.min=-2,
+        col.max=2,
+        group.by="seurat_clusters") +
+            coord_flip() +
+  geom_point(aes(size=pct.exp), shape = 21, colour="black", stroke=0.5)+
+    labs(x="Gene", y="Cluster",
+         title="Cancer Stem Cell Oligodendroglioma Genes") 
+
+
+#oligo 
+
+DotPlot(all.data.filt, 
+        assay="RNA", 
+        features=c("ADAMTS4", "ASPA", "CDK18", "CLDN11", "CNP", "DAAM2", "DPYD", "ERMN", "FA2H", "GJB1", "GPR37", "GRM3", "GSN", "KCNH8", "KLK6", "LGI3", "LPAR1", "MAG", "MAL", "MAP6D1", "MBP", "MOBP", "OPALIN", "PLEKHB1", "PLP1", "PPP1R14A", "SEC14L5", "SHC4", "UGT8"
+                   ), 
+        cols="RdBu",
+        col.min=-2,
+        col.max=2,
+        group.by="seurat_clusters") +
+            coord_flip() +
+  geom_point(aes(size=pct.exp), shape = 21, colour="black", stroke=0.5)+
+    labs(x="Gene", y="Cluster",
+         title="Oligodendrocyte Genes") 
+
+
+#astro
+
+
+
+DotPlot(all.data.filt, 
+        assay="RNA", 
+        features=c("ALDH1L1", "AQP4", "ATP13A4", "BMPR1B", "C16orf89", "CBS", "CHRDL1", "CTH", "CYBRD1", "FGFR3", "GLI3", "GLIS3", "HGF", "ITGA7", "ITGB4", "NWD1", "PAQR6", "PPP1R3C", "RNF43", "SLC14A1", "SLC30A10", "SLC4A4", "SORCS2", "TRIM66"
+                   ), 
+        cols="RdBu",
+        col.min=-2,
+        col.max=2,
+        group.by="seurat_clusters") +
+            coord_flip() +
+  geom_point(aes(size=pct.exp), shape = 21, colour="black", stroke=0.5)+
+    labs(x="Gene", y="Cluster",
+         title="Astrocyte Genes") 
+```
+
+
+```{r}
+#!/usr/bin/env Rscript
+
+# Ensure Seurat v4.0 or higher is installed
+if (packageVersion(pkg = "Seurat") < package_version(x = "4.0.0")) {
+  stop("Mapping datasets requires Seurat v4 or higher.", call. = FALSE)
+}
+
+# Ensure glmGamPoi is installed
+if (!requireNamespace("glmGamPoi", quietly = TRUE)) {
+  if (!requireNamespace("BiocManager", quietly = TRUE)) {
+    BiocManager::install("glmGamPoi")
+  }
+}
+remotes::install_github('satijalab/azimuth')
+
+
+library(Seurat)
+library(ggplot2)
+library('presto')
+
+# Download the Azimuth reference and extract the archive
+# Load the reference
+reference <- LoadReference(path = "https://seurat.nygenome.org/azimuth/references/v1.0.0/human_motorcortex")
+
+query <- all.data.filt
+
+# Filter cells based on the thresholds for nCount_RNA and nFeature_RNA
+# you set in the app
+cells.use <- query[["nCount_RNA", drop = TRUE]] <= 89286 &
+  query[["nCount_RNA", drop = TRUE]] >= 495 &
+  query[["nFeature_RNA", drop = TRUE]] <= 7499 &
+  query[["nFeature_RNA", drop = TRUE]] >= 226
+
+# If the query contains mitochondrial genes, filter cells based on the
+# thresholds for percent.mt you set in the app
+if ("percent.mt" %in% c(colnames(x = query[[]]))) {
+  cells.use <- cells.use & (query[["percent.mt", drop = TRUE]] <= 25 &
+    query[["percent.mt", drop = TRUE]] >= 0)
+}
+
+# Remove filtered cells from the query
+query <- query[, cells.use]
+
+# Preprocess with SCTransform
+query <- SCTransform(
+  object = query,
+  assay = "RNA",
+  new.assay.name = "refAssay",
+  residual.features = rownames(x = reference$map),
+  reference.SCT.model = reference$map[["refAssay"]]@SCTModel.list$refmodel,
+  method = 'glmGamPoi',
+  ncells = 2000,
+  n_genes = 2000,
+  do.correct.umi = FALSE,
+  do.scale = FALSE,
+  do.center = TRUE
+)
+
+# Compute variable features and PCA for query; then run Harmony and umap
+query <- FindVariableFeatures(query, selection.method = "vst", nfeatures = 2000)
+query <- RunPCA(query, features = VariableFeatures(object = query))
+query <- harmony::RunHarmony(query, "orig.ident", assay.use="refAssay")
+query <- RunUMAP(object = query, reduction = "harmony", dims = 1:30)
+query <- FindNeighbors(object = query, reduction = "harmony", dims = 1:30)
+query <- FindClusters(query, reduction = "harmony", dims = 1:30, resolution = 0.8)
+DimPlot(query, reduction = "umap", label = TRUE, pt.size = 0.5, repel = TRUE) + NoLegend() + 
+  ggtitle("Tumor cell unsupervised clustering")
+
+# Find anchors between query and reference
+anchors <- FindTransferAnchors(
+  reference = reference$map,
+  query = query,
+  k.filter = NA,
+  reference.neighbors = "refdr.annoy.neighbors",
+  reference.assay = "refAssay",
+  query.assay = "refAssay",
+  reference.reduction = "refDR",
+  normalization.method = "SCT",
+  features = intersect(rownames(x = reference$map), VariableFeatures(object = query)),
+  dims = 1:50,
+  n.trees = 20,
+  mapping.score.k = 100
+)
+
+# Transfer cell type labels and impute protein expression
+#
+# Transferred labels are in metadata columns named "predicted.*"
+# The maximum prediction score is in a metadata column named "predicted.*.score"
+# The prediction scores for each class are in an assay named "prediction.score.*"
+# The imputed assay is named "impADT" if computed
+
+refdata <- lapply(X = "subclass", function(x) {
+  reference$map[[x, drop = TRUE]]
+})
+names(x = refdata) <- "subclass"
+if (FALSE) {
+  refdata[["impADT"]] <- GetAssayData(
+    object = reference$map[['ADT']],
+    slot = 'data'
+  )
+}
+query <- TransferData(
+  reference = reference$map,
+  query = query,
+  dims = 1:50,
+  anchorset = anchors,
+  refdata = refdata,
+  n.trees = 20,
+  store.weights = TRUE
+)
+
+# Calculate the embeddings of the query data on the reference SPCA
+query <- IntegrateEmbeddings(
+  anchorset = anchors,
+  reference = reference$map,
+  query = query,
+  reductions = "pcaproject",
+  reuse.weights.matrix = TRUE
+)
+
+# Calculate the query neighbors in the reference
+# with respect to the integrated embeddings
+query[["query_ref.nn"]] <- FindNeighbors(
+  object = Embeddings(reference$map[["refDR"]]),
+  query = Embeddings(query[["integrated_dr"]]),
+  return.neighbor = TRUE,
+  l2.norm = TRUE
+)
+
+# The reference used in the app is downsampled compared to the reference on which
+# the UMAP model was computed. This step, using the helper function NNTransform,
+# corrects the Neighbors to account for the downsampling.
+
+#' Transform an NN index
+#'
+#' @param object Seurat object
+#' @param meta.data Metadata
+#' @param neighbor.slot Name of Neighbor slot
+#' @param key Column of metadata to use
+#'
+#' @return \code{object} with transfomed neighbor.slot
+#'
+#' @importFrom SeuratObject Indices
+#'
+#' @keywords internal
+#'
+NNTransform <- function(
+  object,
+  meta.data,
+  neighbor.slot = "query_ref.nn",
+  key = 'ori.index'
+) {
+  on.exit(expr = gc(verbose = FALSE))
+  ind <- Indices(object[[neighbor.slot]])
+  ori.index <- t(x = sapply(
+    X = 1:nrow(x = ind),
+    FUN = function(i) {
+      return(meta.data[ind[i, ], key])
+    }
+  ))
+  rownames(x = ori.index) <- rownames(x = ind)
+  slot(object = object[[neighbor.slot]], name = "nn.idx") <- ori.index
+  return(object)
+}
+
+query <- NNTransform(
+  object = query,
+  meta.data = reference$map[[]]
+)
+
+# Project the query to the reference UMAP.
+query[["proj.umap"]] <- RunUMAP(
+  object = query[["query_ref.nn"]],
+  reduction.model = reference$map[["refUMAP"]],
+  reduction.key = 'UMAP_'
+)
+
+
+# Calculate mapping score and add to metadata
+query <- AddMetaData(
+  object = query,
+  metadata = MappingScore(anchors = anchors),
+  col.name = "mapping.score"
+)
+```
+

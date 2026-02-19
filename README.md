@@ -11,16 +11,15 @@ This repository contains the code and processed outputs for single-cell RNA-seq 
 
 ### Data Organization
 
-#### `annotation/`
+#### `data/Annotation_reference/`
 - Contains all reference and metadata files needed for analysis
 - Sample metadata mapping sample IDs to irradiation status and treatment groups
 
-#### `R_Data_Objects/`
+#### `data/R_Data_Objects/`
 - Saved R data files (.RDS format)
-- Merged, filtered, and annotated Seurat objects with all clusters and metadata
-- Processed objects with cluster markers and differential expression results
+- Ordination plots and metadata 
 
-#### `Seurat_Outputs/`
+#### `data/Seurat_Outputs/`
 - Excel files containing marker genes for each cluster
 - Output from Seurat `FindAllMarkers()` analysis
 - Gene expression summaries by cluster
@@ -89,12 +88,12 @@ Each cell receives the following metadata:
 ### 6. Differential Expression
 Two main comparisons:
 
-#### 6a. Radiation Resistance (Clusters 2, 7, 10, 11 vs. 0, 1, 3, 4, 5, 6, 9)
+#### 6a. Radiation Resistance (Clusters 3, 6, 9 vs. 0, 1, 2, 4, 5, 7, 8, 10, 11)
 - Identifies genes upregulated in radiation-resistant phenotypes
 - GSEA analysis using Hallmark gene sets
 - Results: `rad_DE` table with volcano plot
 
-#### 6b. Radiation + Trametinib Resistance (Clusters 7, 11 vs. 2, 10)
+#### 6b. Radiation + Trametinib Resistance (Clusters 6, 9 vs. 3)
 - Identifies genes conferring additional trametinib resistance
 - GSEA analysis
 - Results: `rad_trt_DE` table with volcano plot
@@ -109,17 +108,17 @@ Two main comparisons:
 
 ## Key Findings & Cluster Characterization
 
-### Radiation Resistant Clusters: 2, 7, 10, 11
+### Radiation Resistant Clusters: 3, 6, 9
 - Enriched in proliferation pathways
 - Upregulated cancer stem cell markers (SOX2, EGFR, TCF4, etc.)
 - Higher expression of microglia/immune genes (P2RY12, SIGLEC8, etc.)
 
-### Radiation Sensitive Clusters: 0, 1, 3, 4, 5, 6, 9
+### Radiation Sensitive Clusters: 0, 1, 2, 4, 5, 7, 8, 10, 11
 - Differentiated cell states
 - Lower proliferation signatures
 - Oligodendrocyte and astrocyte markers
 
-### Additional Trametinib Resistance (Clusters 7, 11 vs. 2, 10)
+### Additional Trametinib Resistance (Clusters 6, 9 vs. 3)
 - Defines a subset of radiation-resistant cells that are also trametinib-resistant
 - Specific gene signatures distinct from radiation resistance alone
 
@@ -139,3 +138,69 @@ library(msigdbr)          # Gene set databases
 library(tidyverse)        # Data manipulation
 library(ggrepel)          # Repelled labels for plots
 library(azimuth)          # Cell type annotation
+```
+
+Install all dependencies:
+```r
+# CRAN packages
+install.packages(c("ggplot2", "patchwork", "tidyverse", "ggrepel"))
+
+# Bioconductor packages
+if (!require("BiocManager", quietly = TRUE))
+  install.packages("BiocManager")
+BiocManager::install(c("Seurat", "SeuratObject", "SeuratDisk", "clusterProfiler", "msigdbr"))
+
+# Harmony (batch correction)
+remotes::install_github("immunogenomics/harmony")
+
+# Azimuth (cell type mapping)
+remotes::install_github('satijalab/azimuth')
+```
+
+---
+
+## How to Run
+
+1. **Clone the repository**
+    ```bash
+    git clone https://github.com/jboconnor13/pHGG-scRNA-Analysis.git
+    cd pHGG-scRNA-Analysis
+    ```
+
+2. **Install R packages** (see Dependencies section above)
+
+3. **Open main analysis script in RStudio**
+    - The workflow is structured as an R Markdown file with sequential chunks
+    - Each chunk is labeled (Import, Processing, Differential Expression, Annotation)
+
+4. **Update data paths** if needed
+    - Paths to external 10X data directories
+    - Update `file_dir` in
+
+5. **Run analysis**
+    - Execute chunks sequentially or knit the entire document
+    - Outputs include cluster assignments, marker genes, DE tables, and visualizations
+
+---
+
+## Output Files
+
+| File | Description |
+|------|-------------|
+| `data/R_Data_Objects/` | Main Seurat objects including metadata ordination axes |
+| `data/Seurat_Outputs/clustermarkers.xlsx` | Marker genes for each cluster (FindAllMarkers output) |
+| `plots` | all visualizations |
+
+---
+
+## Contact & Attribution
+
+**Author:** John O'Connor  
+**Lab:** Green Lab, CU Anschutz  
+**Date Updated:** February 2026
+
+---
+
+## License
+
+This project is licensed under the MIT License - see LICENSE file for details.

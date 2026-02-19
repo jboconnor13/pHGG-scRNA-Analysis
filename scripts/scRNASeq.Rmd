@@ -142,8 +142,8 @@ all.data.filt <- RunHarmony(all.data.filt, group.by.vars = "Runs")
 
 # UMAP visualization and Clustering
 all.data.filt <- RunUMAP(all.data.filt, dims = 1:20)
-all.data.filt <- FindNeighbors(all.data.filt, reduction = "pca", dims = 1:20) %>% FindClusters(resolution=0.6)
 
+#We also find the markers genes for clusters
 ```
 
 # Cell Cylcle Regression
@@ -164,6 +164,29 @@ all.data.filt <- ScaleData(all.data.filt, vars.to.regress = c("S.Score", "G2M.Sc
 # Re-run Dimensionality reduction after regression
 all.data.filt <- RunPCA(all.data.filt, verbose = FALSE)
 all.data.filt <- RunUMAP(all.data.filt, dims = 1:20)
+
+
+# Clustering is Performed
+all.data.filt <- FindNeighbors(all.data.filt, reduction = "pca", dims = 1:20) %>% FindClusters(resolution=0.6)
+ 
+# Genes Are identified and saved
+all.data.filt.markers <- FindAllMarkers(all.data.filt, only.pos = TRUE)
+
+write.csv(all.data.filt.markers, "../data/Seurat_Outputs/clustermarkers.csv")
+
+#The processsed data is saved
+
+# Create directory if it doesn't exist
+if(!dir.exists("../data/R_Data_Objects")) dir.create("../data/R_Data_Objects", recursive = TRUE)
+
+# Save the metadata dataframe
+saveRDS(all.data.filt@meta.data, file = "../data/R_Data_Objects/all.data.filt.metadata.rds")
+
+# Save the list of reductions
+saveRDS(all.data.filt@reductions, file = "../data/R_Data_Objects/all.data.filt.reductions.rds")
+
+
+
 ```
 
 
@@ -243,8 +266,8 @@ We define specific clusters as "Resistant" vs "Sensitive" to Radiation/Trametini
 ```{r}
 
 # Defining functional cluster groups based on treatment response observed in UMAP (these can be manually adjusted)
-trm_res_clusters <- c(2, 7, 10, 11)
-trm_sen_clusters <- c(0, 1, 3, 4, 5, 6, 9)
+trm_res_clusters <- c(3,9,6)
+trm_sen_clusters <- c(0, 1, 2, 4, 5, 7, 8, 10, 11)
 
 # Mapping Resistance status to Metadata
 all.data.filt@meta.data$Radiation_Resistance <- ifelse(all.data.filt@meta.data$seurat_clusters %in% trm_res_clusters, "Radiation Resistant", "Radiation Sensitive")
@@ -277,6 +300,56 @@ Rad_Volc_plot <- ggplot(data=rad_DE, aes(x=avg_log2FC, y=logpadj, color=Sig)) +
   geom_text_repel(aes(label=Label)) +
   scale_color_manual(values=c("blue","red","gray")) +
   theme_classic() + labs(title="Radiation Resistance vs Sensitivity")
+
+ggsave("../plots/Rad_Volc.png", plot = Rad_Volc_plot, width = 8, height = 6, dpi = 300)
+
+# Define the specific groups based on your cluster logic
+# Radiation Resistant & Trametinib Sensitive: 3
+# Radiation Resistant & Trametinib Resistant: 6, 9
+rad_res_trm_sen <- c(3)
+rad_res_trm_res <- c(6, 9)
+
+# Create a new metadata column for this specific comparison
+all.data.filt@meta.data$Trm_Response_In_Rad_Resist <- "Other"
+all.data.filt@meta.data$Trm_Response_In_Rad_Resist[all.data.filt@meta.data$seurat_clusters %in% rad_res_trm_sen] <- "Trm_Sensitive"
+all.data.filt@meta.data$Trm_Response_In_Rad_Resist[all.data.filt@meta.data$seurat_clusters %in% rad_res_trm_res] <- "Trm_Resistant"
+
+# Subset for ONLY these clusters to perform Differential Expression
+sub_rad_res <- subset(all.data.filt, subset = Trm_Response_In_Rad_Resist %in% c("Trm_Sensitive", "Trm_Resistant"))
+Idents(sub_rad_res) <- "Trm_Response_In_Rad_Resist"
+
+# Find Markers: Trm Resistant vs Trm Sensitive (within the Radiation Resistant group)
+trm_comp_DE <- FindMarkers(sub_rad_res, ident.1 = "Trm_Resistant", ident.2 = "Trm_Sensitive")
+
+# Prep for Volcano Plot
+trm_comp_DE$logpadj <- -log10(trm_comp_DE$p_val_adj)
+trm_comp_DE$Sig <- "Insignificant"
+trm_comp_DE$Label <- NA # Initializing as NA is cleaner for geom_text_repel
+
+# Labeling significant genes
+# Using a threshold of log2FC > 0.5 and p_val_adj < 0.05
+for (i in 1:nrow(trm_comp_DE)) {
+  if (trm_comp_DE$avg_log2FC[i] > 0.5 & trm_comp_DE$p_val_adj[i] < 0.05) {
+    trm_comp_DE$Sig[i] <- "Up-regulated in Trm-Resistant"
+    trm_comp_DE$Label[i] <- rownames(trm_comp_DE)[i]
+  } 
+  if (trm_comp_DE$avg_log2FC[i] < -0.5 & trm_comp_DE$p_val_adj[i] < 0.05) {
+    trm_comp_DE$Sig[i] <- "Up-regulated in Trm-Sensitive"
+    trm_comp_DE$Label[i] <- rownames(trm_comp_DE)[i]
+  } 
+}
+
+# Generate Volcano Plot
+Trm_Rad_Volc_plot <- ggplot(data=trm_comp_DE, aes(x=avg_log2FC, y=logpadj, color=Sig)) +
+  geom_point(alpha=0.6, size=2) +
+  geom_text_repel(aes(label=Label), max.overlaps = 15) +
+  scale_color_manual(values=c("gray", "red", "blue")) +
+  theme_classic() + 
+  labs(title="Trametinib Response within Radiation Resistant Clusters",
+       subtitle="Clusters 6 & 9 (Resistant) vs Cluster 3 (Sensitive)",
+       x="log2 Fold Change", y="-log10 Adj P-value")
+
+ggsave("../plots/Trm_Rad_Volc.png", plot = Trm_Rad_Volc_plot, width = 8, height = 6, dpi = 300)
 ```
 
 
