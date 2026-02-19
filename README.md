@@ -15,13 +15,19 @@ This repository contains the code and processed outputs for single-cell RNA-seq 
 - Contains all reference and metadata files needed for analysis
 - Sample metadata mapping sample IDs to irradiation status and treatment groups
 
-#### `R_Data/`
-- `Saved_objects.RDS` - Merged, filtered, and annotated Seurat object with all clusters and metadata
-- Contains the processed object with cluster markers and differential expression results
+#### `R_Data_Objects/`
+- Saved R data files (.RDS format)
+- Merged, filtered, and annotated Seurat objects with all clusters and metadata
+- Processed objects with cluster markers and differential expression results
 
-#### Output Files
-- `clustermarkers.csv` - Cluster marker genes from Seurat (`FindAllMarkers`)
-- Plots and figures generated during downstream analysis
+#### `Seurat_Outputs/`
+- Excel files containing marker genes for each cluster
+- Output from Seurat `FindAllMarkers()` analysis
+- Gene expression summaries by cluster
+
+#### `plots/`
+- Visualization outputs and figures generated during downstream analysis
+- Publication-ready and exploratory plots
 
 ### Important Note
 Raw 10X sequencing data and FASTQ files are NOT included in this repository and are stored externally.
@@ -133,73 +139,3 @@ library(msigdbr)          # Gene set databases
 library(tidyverse)        # Data manipulation
 library(ggrepel)          # Repelled labels for plots
 library(azimuth)          # Cell type annotation
-```
-
-Install all dependencies:
-```r
-# CRAN packages
-install.packages(c("ggplot2", "patchwork", "tidyverse", "ggrepel"))
-
-# Bioconductor packages
-if (!require("BiocManager", quietly = TRUE))
-  install.packages("BiocManager")
-BiocManager::install(c("Seurat", "SeuratObject", "SeuratDisk", "clusterProfiler", "msigdbr"))
-
-# Harmony (batch correction)
-remotes::install_github("immunogenomics/harmony")
-
-# Azimuth (cell type mapping)
-remotes::install_github('satijalab/azimuth')
-```
-
----
-
-## How to Run
-
-1. **Clone the repository**
-    ```bash
-    git clone https://github.com/jboconnor13/pHGG-scRNA-Analysis.git
-    cd pHGG-scRNA-Analysis
-    ```
-
-2. **Install R packages** (see Dependencies section above)
-
-3. **Open main analysis script in RStudio**
-    - The workflow is structured as an R Markdown file with sequential chunks
-    - Each chunk is labeled (Import, Processing, Differential Expression, Annotation)
-
-4. **Update data paths** if needed
-    - Paths to external 10X data directories
-    - Update `R_Data/` paths if using a different location
-
-5. **Run analysis**
-    - Execute chunks sequentially or knit the entire document
-    - Outputs include cluster assignments, marker genes, DE tables, and visualizations
-
----
-
-## Output Files
-
-| File | Description |
-|------|-------------|
-| `R_Data/Saved_objects.RDS` | Main Seurat object with all cells, clusters, and metadata |
-| `clustermarkers.csv` | Marker genes for each cluster (FindAllMarkers output) |
-| Volcano plots (rad, rad_trt) | Significant genes in radiation and trametinib resistance |
-| GSEA dotplots | Enriched Hallmark pathways by resistance phenotype |
-| UMAP visualizations | Spatial representation of cells colored by treatment, radiation, cluster |
-| DotPlots | Gene expression heatmaps by cluster |
-
----
-
-## Contact & Attribution
-
-**Author:** John O'Connor  
-**Email:** jboconnor13@github.com  
-**Lab:** Green Lab, Cu Anschutz  
-**Date Updated:** December 2025
-
----
-
-## License
-
-This project is licensed under the MIT License - see LICENSE file for details.
