@@ -155,6 +155,9 @@ Cell cycle phase can dominate the variance in cancer cells. We calculate S/G2M s
 s.genes <- cc.genes$s.genes
 g2m.genes <- cc.genes$g2m.genes
 
+# Join the layers so the data is in one matrix instead of 16
+all.data.filt <- JoinLayers(all.data.filt)
+
 # Calculate cell cycle scores
 all.data.filt <- CellCycleScoring(all.data.filt, s.features = s.genes, g2m.features = g2m.genes, set.ident = TRUE)
 
