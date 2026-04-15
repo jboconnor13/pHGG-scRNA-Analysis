@@ -269,7 +269,7 @@ We define specific clusters as "Resistant" vs "Sensitive" to Radiation/Trametini
 ```{r}
 
 # Defining functional cluster groups based on treatment response observed in UMAP (these can be manually adjusted)
-trm_res_clusters <- c(3,9,6)
+trm_res_clusters <- c(3,9,6,12)
 trm_sen_clusters <- c(0, 1, 2, 4, 5, 7, 8, 10, 11)
 
 # Mapping Resistance status to Metadata
@@ -310,7 +310,7 @@ ggsave("../plots/Rad_Volc.png", plot = Rad_Volc_plot, width = 8, height = 6, dpi
 # Radiation Resistant & Trametinib Sensitive: 3
 # Radiation Resistant & Trametinib Resistant: 6, 9
 rad_res_trm_sen <- c(3)
-rad_res_trm_res <- c(6, 9)
+rad_res_trm_res <- c(6, 9, 12)
 
 # Create a new metadata column for this specific comparison
 all.data.filt@meta.data$Trm_Response_In_Rad_Resist <- "Other"
@@ -349,7 +349,7 @@ Trm_Rad_Volc_plot <- ggplot(data=trm_comp_DE, aes(x=avg_log2FC, y=logpadj, color
   scale_color_manual(values=c("gray", "red", "blue")) +
   theme_classic() + 
   labs(title="Trametinib Response within Radiation Resistant Clusters",
-       subtitle="Clusters 6 & 9 (Resistant) vs Cluster 3 (Sensitive)",
+       subtitle="Clusters 6, 9, and 12 (Resistant) vs Cluster 3 (Sensitive)",
        x="log2 Fold Change", y="-log10 Adj P-value")
 
 ggsave("../plots/Trm_Rad_Volc.png", plot = Trm_Rad_Volc_plot, width = 8, height = 6, dpi = 300)
@@ -387,8 +387,8 @@ We use ScType to automatically assign biological cell types (Astrocyte, Oligo, e
 ```{r}
 
 # Loading ScType logic from source
-source("[https://raw.githubusercontent.com/IanevskiAleksandr/sc-type/master/R/gene_sets_prepare.R](https://raw.githubusercontent.com/IanevskiAleksandr/sc-type/master/R/gene_sets_prepare.R)")
-source("[https://raw.githubusercontent.com/IanevskiAleksandr/sc-type/master/R/sctype_score_.R](https://raw.githubusercontent.com/IanevskiAleksandr/sc-type/master/R/sctype_score_.R)")
+source("https://raw.githubusercontent.com/IanevskiAleksandr/sc-type/master/R/gene_sets_prepare.R")
+source("https://raw.githubusercontent.com/IanevskiAleksandr/sc-type/master/R/sctype_score_.R)")
 
 # Prepare Brain-specific gene sets
 gs_list <- gene_sets_prepare("[https://raw.githubusercontent.com/IanevskiAleksandr/sc-type/master/ScTypeDB_full.xlsx](https://raw.githubusercontent.com/IanevskiAleksandr/sc-type/master/ScTypeDB_full.xlsx)", "Brain")
@@ -409,7 +409,7 @@ Finally, we project our cells onto the Human Motor Cortex reference to see how o
 ```{r}
 
 # Load Azimuth reference (Motor Cortex)
-reference <- LoadReference(path = "[https://seurat.nygenome.org/azimuth/references/v1.0.0/human_motorcortex](https://seurat.nygenome.org/azimuth/references/v1.0.0/human_motorcortex)")
+reference <- LoadReference(path = "https://seurat.nygenome.org/azimuth/references/v1.0.0/human_motorcortex")
 
 # 1. SCTransform: Prepare query data for reference comparison
 query <- SCTransform(all.data.filt, assay = "RNA", new.assay.name = "refAssay", 
@@ -452,7 +452,7 @@ This analysis calulates Log2  Fold Change (LFC) of cluster sizes. It allows us t
 ```{r}
 
 # 1. Initialize data frame for all 12 clusters (0-11)
-FC_data <- as.data.frame(c(0,1,2,3,4,5,6,7,8,9,10,11))
+FC_data <- as.data.frame(c(0,1,2,3,4,5,6,7,8,9,10,11,12))
 colnames(FC_data) <- "cluster"
 FC_data$log2FCRad <- NA
 FC_data$log2FCtrt <- NA

@@ -78,7 +78,7 @@ Each cell receives the following metadata:
 ### 4. Clustering
 - **K-NN Graph:** `FindNeighbors()` with PCA dims 1:20
 - **Leiden Clustering:** `FindClusters()` at resolution 0.6
-- Results: 12 distinct clusters (0-11)
+- Results: 13 distinct clusters (0-12)
 
 ### 5. Cell Type Annotation
 - **ScType:** Brain cell type classification (oligodendrocytes, astrocytes, microglia, cancer stem cells, etc.)
@@ -88,12 +88,12 @@ Each cell receives the following metadata:
 ### 6. Differential Expression
 Two main comparisons:
 
-#### 6a. Radiation Resistance (Clusters 3, 6, 9 vs. 0, 1, 2, 4, 5, 7, 8, 10, 11)
+#### 6a. Radiation Resistance (Clusters 3, 6, 9, 12 vs. 0, 1, 2, 4, 5, 7, 8, 10, 11)
 - Identifies genes upregulated in radiation-resistant phenotypes
 - GSEA analysis using Hallmark gene sets
 - Results: `rad_DE` table with volcano plot
 
-#### 6b. Radiation + Trametinib Resistance (Clusters 6, 9 vs. 3)
+#### 6b. Radiation + Trametinib Resistance (Clusters 6, 9, 12 vs. 3)
 - Identifies genes conferring additional trametinib resistance
 - GSEA analysis
 - Results: `rad_trt_DE` table with volcano plot
@@ -108,7 +108,7 @@ Two main comparisons:
 
 ## Key Findings & Cluster Characterization
 
-### Radiation Resistant Clusters: 3, 6, 9
+### Radiation Resistant Clusters: 3, 6, 9, 12
 - Enriched in proliferation pathways
 - Upregulated cancer stem cell markers (SOX2, EGFR, TCF4, etc.)
 - Higher expression of microglia/immune genes (P2RY12, SIGLEC8, etc.)
@@ -118,7 +118,7 @@ Two main comparisons:
 - Lower proliferation signatures
 - Oligodendrocyte and astrocyte markers
 
-### Additional Trametinib Resistance (Clusters 6, 9 vs. 3)
+### Additional Trametinib Resistance (Clusters 6, 9, 12 vs. 3)
 - Defines a subset of radiation-resistant cells that are also trametinib-resistant
 - Specific gene signatures distinct from radiation resistance alone
 
